@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from sklearn.metrics import classification_report, confusion_matrix
-import pickle
 import itertools
+import matplotlib.image as mpimg
 
 ##
 data_path = 'C:/git_zhaw/catnocat/data'
@@ -25,7 +25,7 @@ image_size = (224, 224)
 batch_size = 32
 
 ##
-# Set Data Generator for training, testing and validataion.
+# Set Data Generator for training, testing and validation.
 
 # Note for testing, set shuffle = false (For proper Confusion matrix)
 train_datagen = ImageDataGenerator(rescale=1 / 255)
@@ -99,19 +99,13 @@ model.compile(optimizer='Adam', loss='categorical_crossentropy', metrics=['accur
 model.summary()
 
 ##
-epochs = 1
+epochs = 3
 step_size_train = train_dataset.n // train_dataset.batch_size
 history = model.fit(train_dataset,
                     steps_per_epoch=step_size_train,
                     epochs=epochs,
                     validation_data=valid_dataset,
-                    # validation_steps=step_size_train,
                     )
-
-filename = 'trained_model.pickle'
-outfile = open(filename, 'wb')
-pickle.dump(history, outfile)
-outfile.close()
 
 ##
 
@@ -211,65 +205,129 @@ print(classification_report(valid_dataset.classes, y_pred, target_names=target_n
 model.save("tutorial.hdf5")
 
 ##
-x, y = next(valid_dataset)
-# x,y = valid_dataset[0]
-
-img_array = keras.preprocessing.image.img_to_array(valid_dataset)
-img_array_expanded = np.expand_dims(img_array, axis=0)  # Create a batch
-
-predictions = model.predict(img_array_expanded)
-score = tf.nn.softmax(predictions[0])
-
-plt.imshow(img_array)
-plt.title("{}, with {:.2f}% confidence".format(class_names[np.argmax(score)].upper(), 100 * np.max(score)))
-plt.show()
-
-print(
-    "This image most likely belongs to {} with a {:.2f} percent confidence."
-        .format(class_names[np.argmax(score)], 100 * np.max(score))
-)
-
-##
-valid_dataset.reset()  # reset the generator to the first batch
-
-##
-x, y = next(valid_dataset)
-print("Batch Index: ", valid_dataset.batch_index)
-print("x: ", x.shape)
-print("y: ", y.shape)
-
+# PREDICTIONS 2
 ground_truth = valid_dataset.classes
-predictions = model.predict_generator(valid_dataset)
+print(ground_truth[:10])
+print(len(ground_truth))
+
+##
+# Then we get the predictions. This will be a list of probability values that express how confident
+# the model is about the presence of each category in each image. This step might take several minutes.
+
+predictions = model.predict_generator(valid_dataset,
+                                      steps=None)
+print(predictions[:10])
+
+##
 prediction_table = {}
 for index, val in enumerate(predictions):
     index_of_highest_probability = np.argmax(val)
     value_of_highest_probability = val[index_of_highest_probability]
-    prediction_table[index] = [value_of_highest_probability, index_of_highest_probability, ground_truth[index]]
-    assert len(predictions) == len(ground_truth) == len(prediction_table)
-
-plt.figure(figsize=(20, 10))
-for i in range(32):
-    ax = plt.subplot(4, 8, i + 1)
-    plt.imshow(x[i])
-    plt.title("{}, {}".format(class_names[np.argmax(y[i])], "BLA"))
-    plt.axis("off")
-
-plt.show()
+    prediction_table[index] = [
+        value_of_highest_probability,
+        index_of_highest_probability,
+        ground_truth[index]
+    ]
+assert len(predictions) == len(ground_truth) == len(prediction_table)
 
 
 ##
+def get_images_with_sorted_probabilities(prediction_table,
+                                         get_highest_probability,
+                                         label,
+                                         number_of_items,
+                                         only_false_predictions=False):
+    sorted_prediction_table = [(k, prediction_table[k])
+                               for k in sorted(prediction_table,
+                                               key=prediction_table.get,
+                                               reverse=get_highest_probability)
+                               ]
+    result = []
+    for index, key in enumerate(sorted_prediction_table):
+        image_index, [probability, predicted_index, gt] = key
+        if predicted_index == label:
+            if only_false_predictions == True:
+                if predicted_index != gt:
+                    result.append(
+                        [image_index, [probability, predicted_index, gt]])
+            else:
+                result.append(
+                    [image_index, [probability, predicted_index, gt]])
+    return result[:number_of_items]
 
-img_array = keras.preprocessing.image.img_to_array(x)
-img_array_expanded = np.expand_dims(img_array, axis=0)  # Create a batch
 
-predictions = model.predict(img_array_expanded)
-score = tf.nn.softmax(predictions[0])
+def plot_images(filenames, distances, message):
+    images = []
+    for filename in filenames:
+        images.append(mpimg.imread(filename))
+    plt.figure(figsize=(20, 15))
+    columns = 5
+    for i, image in enumerate(images):
+        ax = plt.subplot(int(len(images) / columns + 1), columns, i + 1)
+        ax.set_title("\n\n" + filenames[i].split("/")[-1] + "\n" +
+                     "\nProbability: " + str(float("{0:.2f}".format(distances[i])))
+                     )
+        plt.suptitle(message, fontsize=20, fontweight='bold')
+        plt.axis('off')
+        plt.imshow(image)
+    plt.show()
 
-plt.imshow(img_array)
-plt.title("{}, with {:.2f}% confidence".format(class_names[np.argmax(score)].upper(), 100 * np.max(score)))
-plt.show()
 
-print(
-    "This image most likely belongs to {} with a {:.2f} percent confidence."
-        .format(class_names[np.argmax(score)], 100 * np.max(score))
-)
+filenames = valid_dataset.filenames
+
+
+def display(sorted_indices, message):
+    similar_image_paths = []
+    distances = []
+    for name, value in sorted_indices:
+        [probability, predicted_index, gt] = value
+        similar_image_paths.append(os.path.join(valid_data_path, filenames[name]))
+        distances.append(probability)
+    plot_images(similar_image_paths, distances, message)
+
+
+##
+most_confident_images = get_images_with_sorted_probabilities(prediction_table,
+                                                             get_highest_probability=True,
+                                                             label=0,
+                                                             number_of_items=20,
+                                                             only_false_predictions=False)
+message = 'Images with highest probability of containing cats'
+display(most_confident_images, message)
+
+##
+most_confident_images = get_images_with_sorted_probabilities(prediction_table,
+                                                             get_highest_probability=True,
+                                                             label=1,
+                                                             number_of_items=20,
+                                                             only_false_predictions=False)
+message = 'Images with highest probability of containing no cats'
+display(most_confident_images, message)
+
+##
+least_confident_images = get_images_with_sorted_probabilities(prediction_table,
+                                                              get_highest_probability=False,
+                                                              label=0,
+                                                              number_of_items=20,
+                                                              only_false_predictions=False)
+message = 'Images classified as Cat, with lowest probability'
+display(least_confident_images, message)
+
+##
+least_confident_images = get_images_with_sorted_probabilities(prediction_table,
+                                                              get_highest_probability=False,
+                                                              label=1,
+                                                              number_of_items=20,
+                                                              only_false_predictions=False)
+message = 'Images classified as No Cat, with lowest probability'
+display(least_confident_images, message)
+
+##
+incorrect_images = get_images_with_sorted_probabilities(prediction_table,
+                                                        get_highest_probability=False,
+                                                        label=1,
+                                                        number_of_items=20,
+                                                        only_false_predictions=True)
+message = 'Wrongly classified images, with lowest probability'
+display(incorrect_images, message)
+
