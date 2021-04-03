@@ -1,5 +1,4 @@
 ##
-import keras
 from keras.preprocessing.image import ImageDataGenerator
 from keras.models import Model
 from keras.layers import Dense, GlobalAveragePooling2D
@@ -7,7 +6,6 @@ from keras.applications import MobileNet
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-import tensorflow as tf
 
 from sklearn.metrics import classification_report, confusion_matrix
 import itertools
@@ -99,7 +97,7 @@ model.compile(optimizer='Adam', loss='categorical_crossentropy', metrics=['accur
 model.summary()
 
 ##
-epochs = 3
+epochs = 12
 step_size_train = train_dataset.n // train_dataset.batch_size
 history = model.fit(train_dataset,
                     steps_per_epoch=step_size_train,
@@ -202,7 +200,7 @@ print(classification_report(valid_dataset.classes, y_pred, target_names=target_n
 
 ##
 # Save the model
-model.save("tutorial.hdf5")
+model.save("cats_mobilenet.hdf5")
 
 ##
 # PREDICTIONS 2
@@ -256,7 +254,7 @@ def get_images_with_sorted_probabilities(prediction_table,
     return result[:number_of_items]
 
 
-def plot_images(filenames, distances, message):
+def plot_images(filenames, distances, classification_txt, title_txt):
     images = []
     for filename in filenames:
         images.append(mpimg.imread(filename))
@@ -265,9 +263,9 @@ def plot_images(filenames, distances, message):
     for i, image in enumerate(images):
         ax = plt.subplot(int(len(images) / columns + 1), columns, i + 1)
         ax.set_title("\n\n" + filenames[i].split("/")[-1] + "\n" +
-                     "\nProbability: " + str(float("{0:.2f}".format(distances[i])))
+                     "\n" + classification_txt + ", prob=" + str(float("{0:.2f}".format(distances[i])))
                      )
-        plt.suptitle(message, fontsize=20, fontweight='bold')
+        plt.suptitle(title_txt, fontsize=20, fontweight='bold')
         plt.axis('off')
         plt.imshow(image)
     plt.show()
@@ -276,58 +274,65 @@ def plot_images(filenames, distances, message):
 filenames = valid_dataset.filenames
 
 
-def display(sorted_indices, message):
+def display(sorted_indices, title_txt):
     similar_image_paths = []
     distances = []
     for name, value in sorted_indices:
         [probability, predicted_index, gt] = value
+        if predicted_index == gt:
+            classification_txt = "CORRECT"
+        else:
+            classification_txt = "WRONG"
         similar_image_paths.append(os.path.join(valid_data_path, filenames[name]))
         distances.append(probability)
-    plot_images(similar_image_paths, distances, message)
+    plot_images(similar_image_paths, distances, classification_txt, title_txt)
 
 
 ##
-most_confident_images = get_images_with_sorted_probabilities(prediction_table,
+img_list = get_images_with_sorted_probabilities(prediction_table,
                                                              get_highest_probability=True,
                                                              label=0,
                                                              number_of_items=20,
                                                              only_false_predictions=False)
 message = 'Images with highest probability of containing cats'
-display(most_confident_images, message)
+display(img_list, message)
 
 ##
-most_confident_images = get_images_with_sorted_probabilities(prediction_table,
+img_list = get_images_with_sorted_probabilities(prediction_table,
                                                              get_highest_probability=True,
                                                              label=1,
                                                              number_of_items=20,
                                                              only_false_predictions=False)
 message = 'Images with highest probability of containing no cats'
-display(most_confident_images, message)
+display(img_list, message)
 
 ##
-least_confident_images = get_images_with_sorted_probabilities(prediction_table,
+img_list = get_images_with_sorted_probabilities(prediction_table,
                                                               get_highest_probability=False,
                                                               label=0,
                                                               number_of_items=20,
                                                               only_false_predictions=False)
 message = 'Images classified as Cat, with lowest probability'
-display(least_confident_images, message)
+display(img_list, message)
 
 ##
-least_confident_images = get_images_with_sorted_probabilities(prediction_table,
-                                                              get_highest_probability=False,
-                                                              label=1,
-                                                              number_of_items=20,
-                                                              only_false_predictions=False)
-message = 'Images classified as No Cat, with lowest probability'
-display(least_confident_images, message)
-
-##
-incorrect_images = get_images_with_sorted_probabilities(prediction_table,
+img_list = get_images_with_sorted_probabilities(prediction_table,
                                                         get_highest_probability=False,
                                                         label=1,
+                                                        number_of_items=25,
+                                                        only_false_predictions=True)
+message = 'Wrongly classified images, with lowest probability'
+display(img_list, message)
+
+##
+img_list = get_images_with_sorted_probabilities(prediction_table,
+                                                        get_highest_probability=False,
+                                                        label=0,
                                                         number_of_items=20,
                                                         only_false_predictions=True)
 message = 'Wrongly classified images, with lowest probability'
-display(incorrect_images, message)
+display(img_list, message)
+
+
+##
 
